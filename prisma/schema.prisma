@@ -1,0 +1,104 @@
+// Smashers Backend - Prisma Schema
+// PostgreSQL database schema for badminton club management
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Categories for sessions (e.g., "Тренировка", "Игра")
+model Category {
+  id          Int       @id
+  name        String
+  sortOrder   Int       @map("sort_order")
+  isVisible   Boolean   @map("is_visible")
+  lastUpdated DateTime  @map("last_updated")
+  sessions    Session[]
+
+  @@map("categories")
+}
+
+// Memberships/Subscriptions (абонементы)
+model Membership {
+  id           Int      @id
+  name         String
+  type         String   // "Обычный абик" or "Подарочный серт"
+  price        Int
+  sessionCount Int      @map("session_count")
+  isVisible    Boolean  @map("is_visible")
+  lastUpdated  DateTime @map("last_updated")
+
+  @@map("memberships")
+}
+
+// Training sessions (занятия)
+model Session {
+  id             Int      @id
+  datetime       DateTime
+  locationId     Int      @map("location_id")
+  location       Location @relation(fields: [locationId], references: [id])
+  trainers       String
+  name           String
+  categoryId     Int      @map("category_id")
+  category       Category @relation(fields: [categoryId], references: [id])
+  maxSpots       Int      @map("max_spots")
+  availableSpots Int      @map("available_spots")
+  status         String   // "Активно", "Завершено", etc.
+  lastUpdated    DateTime @map("last_updated")
+
+  @@map("sessions")
+  @@index([datetime])
+  @@index([categoryId])
+  @@index([locationId])
+  @@index([status])
+}
+
+// Training locations (локации)
+model Location {
+  id                  Int       @id
+  name                String
+  showLocation        Boolean   @map("show_location")
+  showOnBookingScreen Boolean   @map("show_on_booking_screen")
+  description         String?
+  sortOrder           Int       @map("sort_order")
+  lastUpdated         DateTime  @map("last_updated")
+  sessions            Session[]
+
+  @@map("locations")
+}
+
+// Booking requests from the website
+model BookingRequest {
+  id             Int      @id @default(autoincrement())
+  name           String
+  phone          String
+  sessionId      Int?     @map("session_id")
+  membershipId   Int?     @map("membership_id")
+  message        String?
+  source         String   // "session_booking", "membership_purchase", "contact_form"
+  createdAt      DateTime @default(now()) @map("created_at")
+  sentToTelegram Boolean  @default(false) @map("sent_to_telegram")
+
+  @@map("booking_requests")
+  @@index([createdAt])
+  @@index([sentToTelegram])
+}
+
+// Sync status tracking
+model SyncStatus {
+  id           Int      @id @default(autoincrement())
+  syncType     String   @map("sync_type") // "parser" or "sheets_to_db"
+  lastSync     DateTime @map("last_sync")
+  status       String   // "success", "failed", "in_progress"
+  itemsParsed  Json?    @map("items_parsed") // { categories: 5, sessions: 100, ... }
+  errorMessage String?  @map("error_message")
+  duration     Int?     // Duration in milliseconds
+
+  @@map("sync_status")
+  @@index([syncType])
+  @@index([lastSync])
+}

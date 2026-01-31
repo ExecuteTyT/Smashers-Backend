@@ -1,0 +1,35 @@
+# Smashers Backend - Development Docker Compose Override
+# Run: docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+
+version: '3.8'
+
+services:
+  # ============================================
+  # PostgreSQL Database (Development)
+  # ============================================
+  postgres:
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: smashers_db
+
+  # ============================================
+  # Backend API (Development)
+  # ============================================
+  backend:
+    build:
+      context: .
+      target: builder  # Use builder stage for development (has all deps)
+    command: npm run dev
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/smashers_db
+      ENABLE_JOBS: "false"  # Disable scheduled jobs in dev
+    volumes:
+      - ./src:/app/src:ro  # Mount source code (read-only)
+      - ./logs:/app/logs
+    # Don't use healthcheck in dev to allow faster restarts
+    healthcheck:
+      disable: true

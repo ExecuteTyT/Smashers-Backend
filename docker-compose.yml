@@ -1,0 +1,85 @@
+# Smashers Backend - Docker Compose Configuration
+# Run: docker-compose up -d
+
+version: '3.8'
+
+services:
+  # ============================================
+  # PostgreSQL Database
+  # ============================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: smashers-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-smashers}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-smashers_password}
+      POSTGRES_DB: ${DB_NAME:-smashers_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - smashers-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-smashers} -d ${DB_NAME:-smashers_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================
+  # Backend API
+  # ============================================
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: smashers-backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://${DB_USER:-smashers}:${DB_PASSWORD:-smashers_password}@postgres:5432/${DB_NAME:-smashers_db}
+      # Pass through other env vars from .env file
+      API_KEY: ${API_KEY}
+      DJANGO_URL: ${DJANGO_URL}
+      DJANGO_USERNAME: ${DJANGO_USERNAME}
+      DJANGO_PASSWORD: ${DJANGO_PASSWORD}
+      GOOGLE_SHEET_ID: ${GOOGLE_SHEET_ID}
+      GOOGLE_SERVICE_ACCOUNT_EMAIL: ${GOOGLE_SERVICE_ACCOUNT_EMAIL}
+      GOOGLE_PRIVATE_KEY: ${GOOGLE_PRIVATE_KEY}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_MANAGER_CHAT_ID: ${TELEGRAM_MANAGER_CHAT_ID}
+      TELEGRAM_ADMIN_CHAT_ID: ${TELEGRAM_ADMIN_CHAT_ID}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:3001}
+      RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-60000}
+      RATE_LIMIT_MAX_REQUESTS: ${RATE_LIMIT_MAX_REQUESTS:-60}
+      ENABLE_JOBS: "true"
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - smashers-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+# ============================================
+# Development Override (use with docker-compose -f docker-compose.yml -f docker-compose.dev.yml)
+# ============================================
+# See docker-compose.dev.yml for development configuration
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  smashers-network:
+    driver: bridge
