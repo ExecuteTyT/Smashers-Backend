@@ -341,9 +341,29 @@ async function parseSessions() {
       }
 
       // Find visibility icon (ВИДИМОЕ)
-      const visibilityCell = cells.find((c) => c.imgAlt || c.imgSrc);
+      // Try multiple approaches to find visibility
+      let visibilityCell = cells.find((c) => {
+        // Check if cell has an image (Django admin uses icons for boolean fields)
+        if (c.imgAlt || c.imgSrc) {
+          const alt = (c.imgAlt || '').toLowerCase();
+          const src = (c.imgSrc || '').toLowerCase();
+          // Look for Django admin boolean icons
+          return alt.includes('true') || alt.includes('false') || 
+                 src.includes('icon-yes') || src.includes('icon-no') ||
+                 src.includes('true') || src.includes('false');
+        }
+        return false;
+      });
+      
       if (visibilityCell) {
         isVisible = parseDjangoBoolean(visibilityCell.imgAlt || visibilityCell.imgSrc);
+        logger.logParser(`Session ${id}: isVisible=${isVisible} (from icon: ${visibilityCell.imgAlt || visibilityCell.imgSrc})`);
+      } else {
+        // If no visibility icon found, check if we can infer from other cells
+        // In Django admin, visible sessions usually have certain patterns
+        // For now, default to true (visible) if not found, as sessions in "Занятия" table are typically visible
+        isVisible = true;
+        logger.logParser(`Session ${id}: visibility icon not found, defaulting to visible=true`);
       }
 
       // Find category ID from category cell
