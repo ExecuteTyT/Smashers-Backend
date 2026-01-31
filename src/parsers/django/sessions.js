@@ -406,10 +406,32 @@ async function parseSessions() {
       }
 
       // Find category ID from category cell
-      const categoryCell = cells.find((c) => c.href && c.href.includes('/category/'));
+      // Category is in cell[6] as text like "1: Тренировка" or "-" (empty)
+      // First try to find by link (if it's a link)
+      let categoryCell = cells.find((c) => c.href && c.href.includes('/category/'));
       if (categoryCell) {
         const catId = extractIdFromUrl(categoryCell.href);
-        if (catId) categoryId = catId;
+        if (catId) {
+          categoryId = catId;
+          logger.logParser(`Session ${id}: categoryId=${categoryId} from link`);
+        }
+      } else {
+        // If no link, try to parse from cell[6] text (format: "ID: Name" or "-")
+        if (cells.length > 6) {
+          const categoryText = cells[6].text.trim();
+          if (categoryText && categoryText !== '-') {
+            // Extract ID from format "1: Тренировка" or "2: Игровая"
+            const categoryMatch = categoryText.match(/^(\d+):/);
+            if (categoryMatch) {
+              categoryId = parseIntSafe(categoryMatch[1], 1);
+              logger.logParser(`Session ${id}: categoryId=${categoryId} from text "${categoryText}"`);
+            } else {
+              logger.logParser(`Session ${id}: category text found but no ID: "${categoryText}"`);
+            }
+          } else {
+            logger.logParser(`Session ${id}: category is empty or "-", using default categoryId=1`);
+          }
+        }
       }
 
       // Find max spots (КОЛ-ВО МЕСТ ДЛЯ УЧЕНИКОВ) - numeric cell
