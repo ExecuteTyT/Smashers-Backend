@@ -35,29 +35,33 @@ const getSessions = asyncHandler(async (req, res) => {
   
   if (date) {
     // Specific date filter
+    // Ensure date is a string before splitting
+    const dateStr = String(date);
     // Parse date string (YYYY-MM-DD) correctly to avoid timezone issues
-    const dateParts = date.split('-');
+    const dateParts = dateStr.split('-');
     const dateObj = dateParts.length === 3 
       ? new Date(parseInt(dateParts[0], 10), parseInt(dateParts[1], 10) - 1, parseInt(dateParts[2], 10))
-      : new Date(date);
+      : new Date(dateStr);
     const { start, end } = getDayBounds(dateObj);
     where.datetime = { gte: start, lte: end };
   } else if (date_from || date_to) {
     // Date range filter
     where.datetime = {};
     if (date_from) {
-      // Parse date_from correctly
-      const fromParts = date_from.split('-');
+      // Parse date_from correctly - ensure it's a string
+      const fromStr = String(date_from);
+      const fromParts = fromStr.split('-');
       where.datetime.gte = fromParts.length === 3
         ? new Date(parseInt(fromParts[0], 10), parseInt(fromParts[1], 10) - 1, parseInt(fromParts[2], 10))
-        : new Date(date_from);
+        : new Date(fromStr);
     }
     if (date_to) {
-      // Parse date_to correctly and set to end of day
-      const toParts = date_to.split('-');
+      // Parse date_to correctly and set to end of day - ensure it's a string
+      const toStr = String(date_to);
+      const toParts = toStr.split('-');
       const toDate = toParts.length === 3
         ? new Date(parseInt(toParts[0], 10), parseInt(toParts[1], 10) - 1, parseInt(toParts[2], 10))
-        : new Date(date_to);
+        : new Date(toStr);
       const { end } = getDayBounds(toDate);
       where.datetime.lte = end;
     }
@@ -209,11 +213,13 @@ const getUpcomingSessions = asyncHandler(async (req, res) => {
 const getSessionsByDate = asyncHandler(async (req, res) => {
   const { date } = req.params;
 
+  // Ensure date is a string before splitting
+  const dateStr = String(date);
   // Parse date string (YYYY-MM-DD) correctly to avoid timezone issues
-  const dateParts = date.split('-');
+  const dateParts = dateStr.split('-');
   const dateObj = dateParts.length === 3 
     ? new Date(parseInt(dateParts[0], 10), parseInt(dateParts[1], 10) - 1, parseInt(dateParts[2], 10))
-    : new Date(date);
+    : new Date(dateStr);
   const { start, end } = getDayBounds(dateObj);
 
   const sessions = await prisma.session.findMany({
