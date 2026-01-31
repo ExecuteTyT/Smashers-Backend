@@ -279,7 +279,8 @@ async function parseSessions() {
       }
       
       logger.logParser(`Processing session ID: ${id}`);
-
+      logger.logParser(`Session ${id}: firstColumn="${item.firstColumn?.substring(0, 100)}", cells count=${cells.length}`);
+      
       // Django admin table structure for workouts:
       // Columns: ID, КОГДА, ЛОКАЦИЯ, ТРЕНЕРЫ, НАЗВАНИЕ, ВИДИМОЕ, КАТЕГОРИЯ, КОЛ-ВО МЕСТ ДЛЯ УЧЕНИКОВ, ЦЕНА, КОРТЫ
       // First column (th): ID (link) - format: "859: 01.02.2026 (Вс) 19:30 Воскресный бадмик 1: Центр бадминтона"
@@ -318,6 +319,22 @@ async function parseSessions() {
       // Parse cells (td) - columns in order
       // Expected order: КОГДА, ЛОКАЦИЯ, ТРЕНЕРЫ, НАЗВАНИЕ, ВИДИМОЕ, КАТЕГОРИЯ, КОЛ-ВО МЕСТ, ЦЕНА, КОРТЫ
       const cells = item.cells;
+      
+      // Parse date/time from cells if not found in firstColumn
+      // Look for cell with date pattern: "DD.MM.YYYY HH:mm" or "DD.MM.YYYY (День) HH:mm"
+      if (!datetime || datetime === now) {
+        for (const cell of cells) {
+          const text = cell.text.trim();
+          // Try to match date pattern: "31.01.2026 19:30" or "31.01.2026 (Пт) 19:30"
+          const dateTimeMatch = text.match(/(\d{2})\.(\d{2})\.(\d{4})\s+(?:\([^)]+\)\s+)?(\d{2}):(\d{2})/);
+          if (dateTimeMatch) {
+            const [, day, month, year, hour, minute] = dateTimeMatch;
+            datetime = new Date(parseInt(year, 10), parseInt(month, 10) - 1, parseInt(day, 10), parseInt(hour, 10), parseInt(minute, 10));
+            logger.logParser(`Session ${id}: parsed datetime from cell: ${text} -> ${datetime.toISOString()}`);
+            break;
+          }
+        }
+      }
       
       // Find location ID from location cell (if available)
       const locationCell = cells.find((c) => c.href && c.href.includes('/location/'));
@@ -404,6 +421,9 @@ async function parseSessions() {
       // Parse detail page for available spots
       logger.logParser(`Parsing details for session ${id}`);
       const availableSpots = await parseSessionDetails(id);
+
+      // Log final parsed values for debugging
+      logger.logParser(`Session ${id} final: datetime=${datetime.toISOString()}, name="${name}", locationId=${locationId}, categoryId=${categoryId}, maxSpots=${maxSpots}, price=${price}, isVisible=${isVisible}, status=${isVisible ? 'Активно' : 'Неактивно'}`);
 
       parsedSessions.push({
         id,
