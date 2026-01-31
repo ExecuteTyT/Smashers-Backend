@@ -279,7 +279,6 @@ async function parseSessions() {
       }
       
       logger.logParser(`Processing session ID: ${id}`);
-      logger.logParser(`Session ${id}: firstColumn="${item.firstColumn?.substring(0, 100)}", cells count=${cells.length}`);
       
       // Django admin table structure for workouts:
       // Columns: ID, КОГДА, ЛОКАЦИЯ, ТРЕНЕРЫ, НАЗВАНИЕ, ВИДИМОЕ, КАТЕГОРИЯ, КОЛ-ВО МЕСТ ДЛЯ УЧЕНИКОВ, ЦЕНА, КОРТЫ
@@ -319,6 +318,8 @@ async function parseSessions() {
       // Parse cells (td) - columns in order
       // Expected order: КОГДА, ЛОКАЦИЯ, ТРЕНЕРЫ, НАЗВАНИЕ, ВИДИМОЕ, КАТЕГОРИЯ, КОЛ-ВО МЕСТ, ЦЕНА, КОРТЫ
       const cells = item.cells;
+      
+      logger.logParser(`Session ${id}: firstColumn="${item.firstColumn?.substring(0, 100)}", cells count=${cells.length}`);
       
       // Parse date/time from cells if not found in firstColumn
       // Look for cell with date pattern: "DD.MM.YYYY HH:mm" or "DD.MM.YYYY (День) HH:mm"
