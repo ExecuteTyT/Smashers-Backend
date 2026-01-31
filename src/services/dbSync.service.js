@@ -225,6 +225,7 @@ async function saveSessions(sessions, clearOldSessions = false) {
             categoryId: session.categoryId,
             maxSpots: session.maxSpots,
             availableSpots: session.availableSpots,
+            price: session.price !== undefined ? session.price : null,
             status: session.status,
             lastUpdated: session.lastUpdated
           }
@@ -241,6 +242,7 @@ async function saveSessions(sessions, clearOldSessions = false) {
             categoryId: session.categoryId,
             maxSpots: session.maxSpots,
             availableSpots: session.availableSpots,
+            price: session.price !== undefined ? session.price : null,
             status: session.status,
             lastUpdated: session.lastUpdated
           }

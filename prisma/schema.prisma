@@ -47,6 +47,7 @@ model Session {
   category       Category @relation(fields: [categoryId], references: [id])
   maxSpots       Int      @map("max_spots")
   availableSpots Int      @map("available_spots")
+  price          Int?     // Цена занятия (опционально)
   status         String   // "Активно", "Завершено", etc.
   lastUpdated    DateTime @map("last_updated")
 

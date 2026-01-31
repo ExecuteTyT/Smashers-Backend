@@ -159,6 +159,24 @@ const getStats = asyncHandler(async (req, res) => {
     }
   });
 
+  // Get status distribution for sessions
+  const statusCounts = await prisma.session.groupBy({
+    by: ['status'],
+    _count: {
+      status: true
+    }
+  });
+
+  // Get date range of sessions
+  const dateRange = await prisma.session.aggregate({
+    _min: {
+      datetime: true
+    },
+    _max: {
+      datetime: true
+    }
+  });
+
   res.json({
     success: true,
     data: {
@@ -172,6 +190,14 @@ const getStats = asyncHandler(async (req, res) => {
       active: {
         upcomingSessions: activeSessions,
         todayBookings
+      },
+      sessionsStatus: statusCounts.reduce((acc, item) => {
+        acc[item.status] = item._count.status;
+        return acc;
+      }, {}),
+      sessionsDateRange: {
+        earliest: dateRange._min.datetime,
+        latest: dateRange._max.datetime
       }
     }
   });

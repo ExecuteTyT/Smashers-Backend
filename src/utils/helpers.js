@@ -188,6 +188,19 @@ function normalizePhone(phone) {
   return `+${normalized[0]} (${normalized.slice(1, 4)}) ${normalized.slice(4, 7)}-${normalized.slice(7, 9)}-${normalized.slice(9)}`;
 }
 
+/**
+ * Format date for Django admin filter (DD.MM.YYYY)
+ * @param {Date|string} date - Date to format
+ * @returns {string} - Formatted date string like "31.01.2026"
+ */
+function formatDateForDjango(date) {
+  const d = new Date(date);
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year = d.getFullYear();
+  return `${day}.${month}.${year}`;
+}
+
 module.exports = {
   formatDate,
   formatDateTime,
@@ -201,5 +214,6 @@ module.exports = {
   deepEqual,
   getDayBounds,
   isValidPhone,
-  normalizePhone
+  normalizePhone,
+  formatDateForDjango
 };

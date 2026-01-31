@@ -33,7 +33,13 @@ function getDjangoUrl() {
 async function getBrowser() {
   if (!browser || !browser.isConnected()) {
     logger.logParser('Launching browser');
-    browser = await puppeteer.launch({
+    
+    // Use system Chromium if available, otherwise use Puppeteer's Chrome
+    const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || 
+      (require('fs').existsSync('/usr/bin/chromium-browser') ? '/usr/bin/chromium-browser' : 
+       require('fs').existsSync('/usr/bin/chromium') ? '/usr/bin/chromium' : undefined);
+    
+    const launchOptions = {
       headless: 'new',
       args: [
         '--no-sandbox',
@@ -42,7 +48,14 @@ async function getBrowser() {
         '--disable-accelerated-2d-canvas',
         '--disable-gpu'
       ]
-    });
+    };
+    
+    if (executablePath) {
+      launchOptions.executablePath = executablePath;
+      logger.logParser(`Using system browser: ${executablePath}`);
+    }
+    
+    browser = await puppeteer.launch(launchOptions);
   }
   return browser;
 }

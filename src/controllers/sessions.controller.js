@@ -35,16 +35,31 @@ const getSessions = asyncHandler(async (req, res) => {
   
   if (date) {
     // Specific date filter
-    const { start, end } = getDayBounds(new Date(date));
+    // Parse date string (YYYY-MM-DD) correctly to avoid timezone issues
+    const dateParts = date.split('-');
+    const dateObj = dateParts.length === 3 
+      ? new Date(parseInt(dateParts[0], 10), parseInt(dateParts[1], 10) - 1, parseInt(dateParts[2], 10))
+      : new Date(date);
+    const { start, end } = getDayBounds(dateObj);
     where.datetime = { gte: start, lte: end };
   } else if (date_from || date_to) {
     // Date range filter
     where.datetime = {};
     if (date_from) {
-      where.datetime.gte = new Date(date_from);
+      // Parse date_from correctly
+      const fromParts = date_from.split('-');
+      where.datetime.gte = fromParts.length === 3
+        ? new Date(parseInt(fromParts[0], 10), parseInt(fromParts[1], 10) - 1, parseInt(fromParts[2], 10))
+        : new Date(date_from);
     }
     if (date_to) {
-      where.datetime.lte = new Date(date_to);
+      // Parse date_to correctly and set to end of day
+      const toParts = date_to.split('-');
+      const toDate = toParts.length === 3
+        ? new Date(parseInt(toParts[0], 10), parseInt(toParts[1], 10) - 1, parseInt(toParts[2], 10))
+        : new Date(date_to);
+      const { end } = getDayBounds(toDate);
+      where.datetime.lte = end;
     }
     // If only date_to is specified and include_past is false, ensure we don't show past
     if (!date_from && !includePast) {
@@ -194,7 +209,12 @@ const getUpcomingSessions = asyncHandler(async (req, res) => {
 const getSessionsByDate = asyncHandler(async (req, res) => {
   const { date } = req.params;
 
-  const { start, end } = getDayBounds(new Date(date));
+  // Parse date string (YYYY-MM-DD) correctly to avoid timezone issues
+  const dateParts = date.split('-');
+  const dateObj = dateParts.length === 3 
+    ? new Date(parseInt(dateParts[0], 10), parseInt(dateParts[1], 10) - 1, parseInt(dateParts[2], 10))
+    : new Date(date);
+  const { start, end } = getDayBounds(dateObj);
 
   const sessions = await prisma.session.findMany({
     where: {

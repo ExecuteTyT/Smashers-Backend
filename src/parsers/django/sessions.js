@@ -1,15 +1,15 @@
 /**
- * Future Workouts Parser
+ * Workouts Parser
  *
- * Parses future training sessions (будущие тренировки) from Django admin panel.
- * URL: /admin/core/futureworkout/
+ * Parses training sessions (занятия) from Django admin panel.
+ * URL: /admin/core/workout/?at__range__gte=DD.MM.YYYY&at__range__lte=
  *
- * Note: This parser handles pagination as future workouts table can have many entries.
+ * Note: This parser handles pagination and parses detail pages for available spots.
  */
 
 const logger = require('../../config/logger');
 const { navigateToAdminPage, getPage } = require('./auth');
-const { extractIdFromUrl, parseDjangoBoolean, sanitizeString, parseIntSafe, parseRussianDate } = require('../../utils/helpers');
+const { extractIdFromUrl, parseDjangoBoolean, sanitizeString, parseIntSafe, parseRussianDate, formatDateForDjango, parsePrice } = require('../../utils/helpers');
 
 /**
  * Parse a single page of sessions
@@ -99,14 +99,84 @@ async function goToNextPage(page) {
 }
 
 /**
+ * Parse session details page to get available spots
+ * @param {number} sessionId - Session ID
+ * @returns {Promise<number>} - Available spots count
+ */
+async function parseSessionDetails(sessionId) {
+  try {
+    const page = await navigateToAdminPage(`/core/workout/${sessionId}/change/`);
+    
+    // Wait for page to load
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    // Extract "Осталось мест" from the "Места" section
+    const availableSpots = await page.evaluate(() => {
+      // Look for the "Места" section
+      const sections = Array.from(document.querySelectorAll('fieldset, .form-row'));
+      
+      for (const section of sections) {
+        const sectionText = section.textContent || '';
+        if (sectionText.includes('Осталось мест') || sectionText.includes('Осталось мест:')) {
+          // Try to find the number after "Осталось мест"
+          const match = sectionText.match(/Осталось мест[:\s]+(\d+)/i);
+          if (match) {
+            return parseInt(match[1], 10);
+          }
+          
+          // Alternative: look for input field or text with number
+          const inputs = section.querySelectorAll('input, .readonly');
+          for (const input of inputs) {
+            const label = input.closest('.form-row')?.querySelector('label');
+            if (label && (label.textContent.includes('Осталось мест') || label.textContent.includes('Осталось'))) {
+              const value = input.value || input.textContent || '';
+              const num = parseInt(value.trim(), 10);
+              if (!isNaN(num)) {
+                return num;
+              }
+            }
+          }
+          
+          // Try to find any number in the section that might be "осталось мест"
+          const numbers = sectionText.match(/(\d+)/g);
+          if (numbers && numbers.length > 0) {
+            // Usually "Осталось мест" is the second number (after "Кол-во мест для учеников")
+            return parseInt(numbers[numbers.length - 1], 10);
+          }
+        }
+      }
+      
+      return null;
+    });
+    
+    if (availableSpots !== null && !isNaN(availableSpots)) {
+      logger.logParser(`Parsed available spots for session ${sessionId}: ${availableSpots}`);
+      return availableSpots;
+    }
+    
+    logger.warn(`Could not parse available spots for session ${sessionId}, using 0`);
+    return 0;
+  } catch (error) {
+    logger.error(`Failed to parse session details for ${sessionId}`, { error: error.message });
+    return 0;
+  }
+}
+
+/**
  * Parse all sessions from Django admin (handles pagination)
  * @returns {Promise<Array>} - Array of session objects
  */
 async function parseSessions() {
-  logger.logParser('Parsing sessions (future workouts)');
+  logger.logParser('Parsing sessions (workouts)');
 
   try {
-    const page = await navigateToAdminPage('/core/futureworkout/');
+    // Format current date for Django filter (DD.MM.YYYY)
+    const today = new Date();
+    const dateFilter = formatDateForDjango(today);
+    const workoutUrl = `/core/workout/?at__range__gte=${dateFilter}&at__range__lte=`;
+    
+    logger.logParser(`Using date filter: ${dateFilter}`);
+    const page = await navigateToAdminPage(workoutUrl);
 
     // Wait for page to load (waitForTimeout removed in newer Puppeteer versions)
     await new Promise(resolve => setTimeout(resolve, 2000));
@@ -158,75 +228,133 @@ async function parseSessions() {
 
     // Transform parsed data to session objects
     const now = new Date();
-    const parsedSessions = allSessions
-      .filter((item) => item.href)
-      .map((item) => {
-        const id = extractIdFromUrl(item.href);
-        if (!id) return null;
+    const parsedSessions = [];
+    
+    for (const item of allSessions) {
+      if (!item.href) continue;
+      
+      const id = extractIdFromUrl(item.href);
+      if (!id) continue;
 
-        // Django admin table structure for future workouts (futureworkout):
-        // th: ID (link) - format: "858: 31.01.2026 (Сб) 19:30 Все уровни 1: Центр бадминтона"
-        // Format: "ID: DD.MM.YYYY (День недели) HH:MM Название LocationID: Название локации"
-        // Need to parse this complex string from firstColumn
+      // Django admin table structure for workouts:
+      // Columns: ID, КОГДА, ЛОКАЦИЯ, ТРЕНЕРЫ, НАЗВАНИЕ, ВИДИМОЕ, КАТЕГОРИЯ, КОЛ-ВО МЕСТ ДЛЯ УЧЕНИКОВ, ЦЕНА, КОРТЫ
+      // First column (th): ID (link) - format: "859: 01.02.2026 (Вс) 19:30 Воскресный бадмик 1: Центр бадминтона"
+      
+      let datetime = now;
+      let name = '';
+      let locationId = 1;
+      let trainers = '';
+      let categoryId = 1;
+      let maxSpots = 0;
+      let price = null;
+      let isVisible = true;
 
-        // Parse the first column string
-        // Example: "858: 31.01.2026 (Сб) 19:30 Все уровни 1: Центр бадминтона"
-        let datetime = now;
-        let name = '';
-        let locationId = 1;
-        let locationName = '';
-
-        if (item.firstColumn) {
-          // Extract date and time: "31.01.2026 (Сб) 19:30"
-          const dateTimeMatch = item.firstColumn.match(/(\d{2})\.(\d{2})\.(\d{4})\s+\([^)]+\)\s+(\d{2}):(\d{2})/);
-          if (dateTimeMatch) {
-            const [, day, month, year, hour, minute] = dateTimeMatch;
-            datetime = new Date(year, month - 1, day, hour, minute);
-          }
-
-          // Extract location ID and name: "1: Центр бадминтона"
-          const locationMatch = item.firstColumn.match(/(\d+):\s+([^:]+)$/);
-          if (locationMatch) {
-            locationId = parseIntSafe(locationMatch[1], 1);
-            locationName = locationMatch[2].trim();
-          }
-
-          // Extract name (between time and location): "Все уровни"
-          const nameMatch = item.firstColumn.match(/\d{2}:\d{2}\s+(.+?)\s+\d+:/);
-          if (nameMatch) {
-            name = nameMatch[1].trim();
-          }
+      // Parse first column (th) - contains ID, date/time, name, location
+      if (item.firstColumn) {
+        // Extract date and time: "01.02.2026 (Вс) 19:30"
+        const dateTimeMatch = item.firstColumn.match(/(\d{2})\.(\d{2})\.(\d{4})\s+\([^)]+\)\s+(\d{2}):(\d{2})/);
+        if (dateTimeMatch) {
+          const [, day, month, year, hour, minute] = dateTimeMatch;
+          datetime = new Date(year, month - 1, day, hour, minute);
         }
 
-        // Extract category ID from cells if available
-        let categoryId = 1;
-        const categoryCell = item.cells.find((c) => c.href && c.href.includes('/category/'));
-        if (categoryCell) {
-          categoryId = extractIdFromUrl(categoryCell.href) || 1;
+        // Extract location ID and name: "1: Центр бадминтона"
+        const locationMatch = item.firstColumn.match(/(\d+):\s+([^:]+)$/);
+        if (locationMatch) {
+          locationId = parseIntSafe(locationMatch[1], 1);
         }
 
-        // Find numeric cells for spots (if available in future workouts)
-        const numericCells = item.cells.filter((c) => /^\d+$/.test(c.text.trim()));
+        // Extract name (between time and location): "Воскресный бадмик"
+        const nameMatch = item.firstColumn.match(/\d{2}:\d{2}\s+(.+?)\s+\d+:/);
+        if (nameMatch) {
+          name = nameMatch[1].trim();
+        }
+      }
 
-        // Find visibility icon (if available)
-        const visibilityCell = item.cells.find((c) => c.imgAlt || c.imgSrc);
+      // Parse cells (td) - columns in order
+      // Expected order: КОГДА, ЛОКАЦИЯ, ТРЕНЕРЫ, НАЗВАНИЕ, ВИДИМОЕ, КАТЕГОРИЯ, КОЛ-ВО МЕСТ, ЦЕНА, КОРТЫ
+      const cells = item.cells;
+      
+      // Find location ID from location cell (if available)
+      const locationCell = cells.find((c) => c.href && c.href.includes('/location/'));
+      if (locationCell) {
+        const locId = extractIdFromUrl(locationCell.href);
+        if (locId) locationId = locId;
+      }
 
-        return {
-          id,
-          datetime: datetime || now,
-          locationId: locationId || 1,
-          trainers: sanitizeString(item.cells.find((c) => c.text && c.text.includes('тренер'))?.text || ''),
-          name: sanitizeString(name || item.cells[0]?.text || ''),
-          categoryId: categoryId || 1,
-          maxSpots: parseIntSafe(numericCells[0]?.text, 10),
-          availableSpots: parseIntSafe(numericCells[1]?.text, 0),
-          status: parseDjangoBoolean(visibilityCell?.imgAlt || visibilityCell?.imgSrc)
-            ? 'Активно'
-            : 'Неактивно',
-          lastUpdated: now
-        };
-      })
-      .filter(Boolean);
+      // Find trainers cell (contains "тренер" or trainer name)
+      const trainerCell = cells.find((c) => c.text && (c.text.includes('тренер') || c.text.includes('tg')));
+      if (trainerCell) {
+        trainers = sanitizeString(trainerCell.text);
+      }
+
+      // Find name cell (if not found in firstColumn)
+      if (!name) {
+        const nameCell = cells.find((c) => c.text && c.text.length > 0 && !c.href);
+        if (nameCell) {
+          name = sanitizeString(nameCell.text);
+        }
+      }
+
+      // Find visibility icon (ВИДИМОЕ)
+      const visibilityCell = cells.find((c) => c.imgAlt || c.imgSrc);
+      if (visibilityCell) {
+        isVisible = parseDjangoBoolean(visibilityCell.imgAlt || visibilityCell.imgSrc);
+      }
+
+      // Find category ID from category cell
+      const categoryCell = cells.find((c) => c.href && c.href.includes('/category/'));
+      if (categoryCell) {
+        const catId = extractIdFromUrl(categoryCell.href);
+        if (catId) categoryId = catId;
+      }
+
+      // Find max spots (КОЛ-ВО МЕСТ ДЛЯ УЧЕНИКОВ) - numeric cell
+      const numericCells = cells.filter((c) => {
+        const text = c.text.trim();
+        return /^\d+$/.test(text) && parseInt(text, 10) > 0 && parseInt(text, 10) <= 100; // Reasonable range for spots
+      });
+      if (numericCells.length > 0) {
+        maxSpots = parseIntSafe(numericCells[0].text, 0);
+      }
+
+      // Find price (ЦЕНА) - cell with price format (may contain spaces, currency symbols)
+      // Price is usually in a cell that contains digits but is not maxSpots
+      // Try to find cell that looks like price (contains digits, may have spaces/currency)
+      for (const cell of cells) {
+        const text = cell.text.trim();
+        // Skip if it's a link, empty, or matches maxSpots
+        if (cell.href || !text || text === String(maxSpots)) continue;
+        
+        // Check if it looks like a price (contains digits, may have spaces/currency symbols)
+        if (/[\d\s₽руб]+/.test(text)) {
+          const parsedPrice = parsePrice(text);
+          // Price should be reasonable (between 100 and 50000 rubles)
+          if (parsedPrice >= 100 && parsedPrice <= 50000) {
+            price = parsedPrice;
+            break;
+          }
+        }
+      }
+
+      // Parse detail page for available spots
+      logger.logParser(`Parsing details for session ${id}`);
+      const availableSpots = await parseSessionDetails(id);
+
+      parsedSessions.push({
+        id,
+        datetime: datetime || now,
+        locationId: locationId || 1,
+        trainers: trainers || '',
+        name: sanitizeString(name || ''),
+        categoryId: categoryId || 1,
+        maxSpots: maxSpots || 0,
+        availableSpots: availableSpots,
+        price: price,
+        status: isVisible ? 'Активно' : 'Неактивно',
+        lastUpdated: now
+      });
+    }
 
     logger.logParser(`Parsed ${parsedSessions.length} sessions total`);
 
