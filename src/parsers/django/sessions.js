@@ -295,11 +295,17 @@ async function parseSessions() {
 
       // Parse first column (th) - contains ID, date/time, name, location
       if (item.firstColumn) {
-        // Extract date and time: "01.02.2026 (Вс) 19:30"
-        const dateTimeMatch = item.firstColumn.match(/(\d{2})\.(\d{2})\.(\d{4})\s+\([^)]+\)\s+(\d{2}):(\d{2})/);
+        // Extract date and time: "01.02.26 (Вс) 19:30" or "01.02.2026 (Вс) 19:30"
+        // Support both 2-digit and 4-digit years
+        const dateTimeMatch = item.firstColumn.match(/(\d{2})\.(\d{2})\.(\d{2,4})\s+\([^)]+\)\s+(\d{2}):(\d{2})/);
         if (dateTimeMatch) {
-          const [, day, month, year, hour, minute] = dateTimeMatch;
-          datetime = new Date(year, month - 1, day, hour, minute);
+          const [, day, month, yearStr, hour, minute] = dateTimeMatch;
+          // Convert 2-digit year to 4-digit (assume 2000-2099)
+          let year = parseInt(yearStr, 10);
+          if (yearStr.length === 2) {
+            year = year < 50 ? 2000 + year : 1900 + year; // 00-49 = 2000-2049, 50-99 = 1950-1999
+          }
+          datetime = new Date(year, parseInt(month, 10) - 1, parseInt(day, 10), parseInt(hour, 10), parseInt(minute, 10));
         }
 
         // Extract location ID and name: "1: Центр бадминтона"
@@ -327,16 +333,22 @@ async function parseSessions() {
       }
       
       // Parse date/time from cells if not found in firstColumn
-      // Look for cell with date pattern: "DD.MM.YYYY HH:mm" or "DD.MM.YYYY (День) HH:mm"
+      // Look for cell with date pattern: "DD.MM.YY (День) HH:mm" or "DD.MM.YYYY (День) HH:mm"
       if (!datetime || datetime === now) {
         for (let i = 0; i < cells.length; i++) {
           const cell = cells[i];
           const text = cell.text.trim();
-          // Try to match date pattern: "31.01.2026 19:30" or "31.01.2026 (Пт) 19:30"
-          const dateTimeMatch = text.match(/(\d{2})\.(\d{2})\.(\d{4})\s+(?:\([^)]+\)\s+)?(\d{2}):(\d{2})/);
+          // Try to match date pattern: "31.01.26 (Сб) 19:30" or "31.01.2026 (Пт) 19:30"
+          // Support both 2-digit and 4-digit years
+          const dateTimeMatch = text.match(/(\d{2})\.(\d{2})\.(\d{2,4})\s+(?:\([^)]+\)\s+)?(\d{2}):(\d{2})/);
           if (dateTimeMatch) {
-            const [, day, month, year, hour, minute] = dateTimeMatch;
-            datetime = new Date(parseInt(year, 10), parseInt(month, 10) - 1, parseInt(day, 10), parseInt(hour, 10), parseInt(minute, 10));
+            const [, day, month, yearStr, hour, minute] = dateTimeMatch;
+            // Convert 2-digit year to 4-digit (assume 2000-2099)
+            let year = parseInt(yearStr, 10);
+            if (yearStr.length === 2) {
+              year = year < 50 ? 2000 + year : 1900 + year; // 00-49 = 2000-2049, 50-99 = 1950-1999
+            }
+            datetime = new Date(year, parseInt(month, 10) - 1, parseInt(day, 10), parseInt(hour, 10), parseInt(minute, 10));
             logger.logParser(`Session ${id}: parsed datetime from cell[${i}]: "${text}" -> ${datetime.toISOString()}`);
             break;
           }
