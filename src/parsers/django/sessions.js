@@ -358,24 +358,50 @@ async function parseSessions() {
         }
       }
       
-      // Find location ID from location cell (if available)
-      const locationCell = cells.find((c) => c.href && c.href.includes('/location/'));
-      if (locationCell) {
-        const locId = extractIdFromUrl(locationCell.href);
-        if (locId) locationId = locId;
+      // Parse cells by index (based on Django admin table structure):
+      // [0] = checkbox (empty)
+      // [1] = КОГДА (date/time) - already parsed above
+      // [2] = ЛОКАЦИЯ (location) - format: "ID: Name" or link
+      // [3] = ТРЕНЕРЫ (trainers) - format: "ID: Name tg" or "ID: Name 🏸 tg"
+      // [4] = НАЗВАНИЕ (name)
+      // [5] = ВИДИМОЕ (visible) - icon
+      // [6] = КАТЕГОРИЯ (category) - format: "ID: Name" or "-"
+      // [7] = КОЛ-ВО МЕСТ ДЛЯ УЧЕНИКОВ (max spots)
+      // [8] = ЦЕНА (price)
+      // [9] = КОРТЫ (courts) - usually "-"
+      
+      // Parse location from cell[2]
+      if (cells.length > 2) {
+        const locationText = cells[2].text.trim();
+        // Try to extract ID from link first
+        if (cells[2].href && cells[2].href.includes('/location/')) {
+          const locId = extractIdFromUrl(cells[2].href);
+          if (locId) locationId = locId;
+        } else if (locationText) {
+          // Extract ID from format "1: Центр бадминтона🏸"
+          const locationMatch = locationText.match(/^(\d+):/);
+          if (locationMatch) {
+            locationId = parseIntSafe(locationMatch[1], 1);
+            logger.logParser(`Session ${id}: locationId=${locationId} from text "${locationText}"`);
+          }
+        }
       }
 
-      // Find trainers cell (contains "тренер" or trainer name)
-      const trainerCell = cells.find((c) => c.text && (c.text.includes('тренер') || c.text.includes('tg')));
-      if (trainerCell) {
-        trainers = sanitizeString(trainerCell.text);
+      // Parse trainers from cell[3]
+      if (cells.length > 3) {
+        const trainersText = cells[3].text.trim();
+        if (trainersText) {
+          trainers = sanitizeString(trainersText);
+          logger.logParser(`Session ${id}: trainers="${trainers}" from cell[3]`);
+        }
       }
 
-      // Find name cell (if not found in firstColumn)
-      if (!name) {
-        const nameCell = cells.find((c) => c.text && c.text.length > 0 && !c.href);
-        if (nameCell) {
-          name = sanitizeString(nameCell.text);
+      // Parse name from cell[4]
+      if (cells.length > 4) {
+        const nameText = cells[4].text.trim();
+        if (nameText) {
+          name = sanitizeString(nameText);
+          logger.logParser(`Session ${id}: name="${name}" from cell[4]`);
         }
       }
 
@@ -434,31 +460,29 @@ async function parseSessions() {
         }
       }
 
-      // Find max spots (КОЛ-ВО МЕСТ ДЛЯ УЧЕНИКОВ) - numeric cell
-      const numericCells = cells.filter((c) => {
-        const text = c.text.trim();
-        return /^\d+$/.test(text) && parseInt(text, 10) > 0 && parseInt(text, 10) <= 100; // Reasonable range for spots
-      });
-      if (numericCells.length > 0) {
-        maxSpots = parseIntSafe(numericCells[0].text, 0);
+      // Parse max spots from cell[7] (КОЛ-ВО МЕСТ ДЛЯ УЧЕНИКОВ)
+      if (cells.length > 7) {
+        const maxSpotsText = cells[7].text.trim();
+        if (maxSpotsText && /^\d+$/.test(maxSpotsText)) {
+          maxSpots = parseIntSafe(maxSpotsText, 0);
+          logger.logParser(`Session ${id}: maxSpots=${maxSpots} from cell[7]`);
+        }
       }
 
-      // Find price (ЦЕНА) - cell with price format (may contain spaces, currency symbols)
-      // Price is usually in a cell that contains digits but is not maxSpots
-      // Try to find cell that looks like price (contains digits, may have spaces/currency)
-      for (const cell of cells) {
-        const text = cell.text.trim();
-        // Skip if it's a link, empty, or matches maxSpots
-        if (cell.href || !text || text === String(maxSpots)) continue;
-        
-        // Check if it looks like a price (contains digits, may have spaces/currency symbols)
-        if (/[\d\s₽руб]+/.test(text)) {
-          const parsedPrice = parsePrice(text);
+      // Parse price from cell[8] (ЦЕНА)
+      if (cells.length > 8) {
+        const priceText = cells[8].text.trim();
+        if (priceText && priceText !== '-') {
+          const parsedPrice = parsePrice(priceText);
           // Price should be reasonable (between 100 and 50000 rubles)
           if (parsedPrice >= 100 && parsedPrice <= 50000) {
             price = parsedPrice;
-            break;
+            logger.logParser(`Session ${id}: price=${price} from cell[8] "${priceText}"`);
+          } else {
+            logger.logParser(`Session ${id}: price "${priceText}" parsed to ${parsedPrice}, but out of range, skipping`);
           }
+        } else {
+          logger.logParser(`Session ${id}: price is empty or "-"`);
         }
       }
 
