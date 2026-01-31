@@ -321,19 +321,28 @@ async function parseSessions() {
       
       logger.logParser(`Session ${id}: firstColumn="${item.firstColumn?.substring(0, 100)}", cells count=${cells.length}`);
       
+      // Log all cells for debugging
+      if (cells.length > 0) {
+        logger.logParser(`Session ${id}: cells content: ${cells.map((c, i) => `[${i}]="${c.text?.substring(0, 50)}"`).join(', ')}`);
+      }
+      
       // Parse date/time from cells if not found in firstColumn
       // Look for cell with date pattern: "DD.MM.YYYY HH:mm" or "DD.MM.YYYY (День) HH:mm"
       if (!datetime || datetime === now) {
-        for (const cell of cells) {
+        for (let i = 0; i < cells.length; i++) {
+          const cell = cells[i];
           const text = cell.text.trim();
           // Try to match date pattern: "31.01.2026 19:30" or "31.01.2026 (Пт) 19:30"
           const dateTimeMatch = text.match(/(\d{2})\.(\d{2})\.(\d{4})\s+(?:\([^)]+\)\s+)?(\d{2}):(\d{2})/);
           if (dateTimeMatch) {
             const [, day, month, year, hour, minute] = dateTimeMatch;
             datetime = new Date(parseInt(year, 10), parseInt(month, 10) - 1, parseInt(day, 10), parseInt(hour, 10), parseInt(minute, 10));
-            logger.logParser(`Session ${id}: parsed datetime from cell: ${text} -> ${datetime.toISOString()}`);
+            logger.logParser(`Session ${id}: parsed datetime from cell[${i}]: "${text}" -> ${datetime.toISOString()}`);
             break;
           }
+        }
+        if (datetime === now) {
+          logger.logParser(`Session ${id}: WARNING - datetime not found, using current time: ${datetime.toISOString()}`);
         }
       }
       
