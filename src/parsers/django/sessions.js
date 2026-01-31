@@ -45,10 +45,21 @@ async function parseSessionsPage(page) {
     const results = [];
 
     rows.forEach((row) => {
-      if (!row.querySelector('th') && !row.querySelector('td a')) return;
+      // In Django admin, the first column is usually <th> with a link
+      const thLink = row.querySelector('th a');
+      const tdLink = row.querySelector('td a');
+      
+      // Skip header rows or rows without links
+      if (!thLink && !tdLink) return;
 
-      const link = row.querySelector('th a') || row.querySelector('td a');
+      // Prefer th link (first column), fallback to td link
+      const link = thLink || tdLink;
       const href = link ? link.getAttribute('href') : null;
+      
+      // Skip if href doesn't look like a workout detail page
+      if (href && !href.includes('/workout/') && !href.includes('/core/workout/')) {
+        return;
+      }
 
       const cells = row.querySelectorAll('td');
       const thCell = row.querySelector('th');
@@ -213,6 +224,27 @@ async function parseSessions() {
 
       // Parse current page
       const pageSessions = await parseSessionsPage(page);
+      logger.logParser(`Found ${pageSessions.length} rows on page ${pageNum}`);
+      
+      // Debug: log first row if available
+      if (pageSessions.length > 0) {
+        logger.logParser(`First row sample: href=${pageSessions[0].href}, firstColumn="${pageSessions[0].firstColumn?.substring(0, 100)}"`);
+      } else {
+        // Debug: check what's on the page
+        const pageInfo = await page.evaluate(() => {
+          const table = document.querySelector('#result_list') || document.querySelector('table.results') || document.querySelector('.change-list table');
+          if (!table) return { tableFound: false, rowCount: 0, html: '' };
+          const rows = table.querySelectorAll('tbody tr');
+          return {
+            tableFound: true,
+            rowCount: rows.length,
+            firstRowHtml: rows.length > 0 ? rows[0].outerHTML.substring(0, 500) : '',
+            pageText: document.body.textContent.substring(0, 200)
+          };
+        });
+        logger.logParser(`Page debug info: ${JSON.stringify(pageInfo)}`);
+      }
+      
       allSessions.push(...pageSessions);
 
       // Try to go to next page
@@ -225,16 +257,28 @@ async function parseSessions() {
         break;
       }
     }
+    
+    logger.logParser(`Total raw sessions found: ${allSessions.length}`);
 
     // Transform parsed data to session objects
     const now = new Date();
     const parsedSessions = [];
     
+    logger.logParser(`Processing ${allSessions.length} raw session items`);
+    
     for (const item of allSessions) {
-      if (!item.href) continue;
+      if (!item.href) {
+        logger.logParser(`Skipping item without href: ${JSON.stringify({ firstColumn: item.firstColumn?.substring(0, 50), cellsCount: item.cells?.length })}`);
+        continue;
+      }
       
       const id = extractIdFromUrl(item.href);
-      if (!id) continue;
+      if (!id) {
+        logger.logParser(`Skipping item with invalid href: ${item.href}`);
+        continue;
+      }
+      
+      logger.logParser(`Processing session ID: ${id}`);
 
       // Django admin table structure for workouts:
       // Columns: ID, КОГДА, ЛОКАЦИЯ, ТРЕНЕРЫ, НАЗВАНИЕ, ВИДИМОЕ, КАТЕГОРИЯ, КОЛ-ВО МЕСТ ДЛЯ УЧЕНИКОВ, ЦЕНА, КОРТЫ
