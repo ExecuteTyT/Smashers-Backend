@@ -87,12 +87,15 @@ function parseIntSafe(str, fallback = 0) {
 
 /**
  * Extract ID from Django admin URL
- * @param {string} url - URL like "/admin/core/category/1/change/"
+ * @param {string} url - URL like "/admin/core/category/1/change/" or "/admin/core/workout/858/change/?_changelist_filters=..."
  * @returns {number|null} - Extracted ID or null
  */
 function extractIdFromUrl(url) {
   if (!url) return null;
-  const match = url.match(/\/(\d+)\/(change\/)?$/);
+  // Remove query parameters first
+  const urlWithoutParams = url.split('?')[0];
+  // Match pattern: /number/ or /number/change/ (with optional trailing slash)
+  const match = urlWithoutParams.match(/\/(\d+)\/(?:change\/)?$/);
   return match ? parseInt(match[1], 10) : null;
 }
 
