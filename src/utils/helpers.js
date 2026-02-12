@@ -63,6 +63,21 @@ function parseRussianDate(dateStr) {
 }
 
 /**
+ * Create a Date from Moscow time components (Django admin shows Moscow time).
+ * Moscow is UTC+3, so we store UTC in the DB and frontend can display in Moscow.
+ * @param {number} year - Full year
+ * @param {number} month - 1-12
+ * @param {number} day - 1-31
+ * @param {number} hour - 0-23 (Moscow)
+ * @param {number} minute - 0-59
+ * @returns {Date} - Date in UTC representing that moment in Moscow
+ */
+function moscowTimeToUTC(year, month, day, hour, minute) {
+  // Moscow = UTC+3 → subtract 3 hours to get UTC
+  return new Date(Date.UTC(year, month - 1, day, hour - 3, minute || 0));
+}
+
+/**
  * Parse price from string (removes currency symbols, spaces)
  * @param {string} priceStr - Price string like "3 500 ₽"
  * @returns {number} - Price as integer
@@ -208,6 +223,7 @@ module.exports = {
   formatDate,
   formatDateTime,
   parseRussianDate,
+  moscowTimeToUTC,
   parsePrice,
   parseIntSafe,
   extractIdFromUrl,

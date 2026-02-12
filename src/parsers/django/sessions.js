@@ -9,7 +9,7 @@
 
 const logger = require('../../config/logger');
 const { navigateToAdminPage, getPage } = require('./auth');
-const { extractIdFromUrl, parseDjangoBoolean, sanitizeString, parseIntSafe, parseRussianDate, formatDateForDjango, parsePrice } = require('../../utils/helpers');
+const { extractIdFromUrl, parseDjangoBoolean, sanitizeString, parseIntSafe, parseRussianDate, formatDateForDjango, parsePrice, moscowTimeToUTC } = require('../../utils/helpers');
 
 /**
  * Parse a single page of sessions
@@ -305,7 +305,7 @@ async function parseSessions() {
           if (yearStr.length === 2) {
             year = year < 50 ? 2000 + year : 1900 + year; // 00-49 = 2000-2049, 50-99 = 1950-1999
           }
-          datetime = new Date(year, parseInt(month, 10) - 1, parseInt(day, 10), parseInt(hour, 10), parseInt(minute, 10));
+          datetime = moscowTimeToUTC(year, parseInt(month, 10), parseInt(day, 10), parseInt(hour, 10), parseInt(minute, 10));
         }
 
         // Extract location ID and name: "1: Центр бадминтона"
@@ -348,7 +348,7 @@ async function parseSessions() {
             if (yearStr.length === 2) {
               year = year < 50 ? 2000 + year : 1900 + year; // 00-49 = 2000-2049, 50-99 = 1950-1999
             }
-            datetime = new Date(year, parseInt(month, 10) - 1, parseInt(day, 10), parseInt(hour, 10), parseInt(minute, 10));
+            datetime = moscowTimeToUTC(year, parseInt(month, 10), parseInt(day, 10), parseInt(hour, 10), parseInt(minute, 10));
             logger.logParser(`Session ${id}: parsed datetime from cell[${i}]: "${text}" -> ${datetime.toISOString()}`);
             break;
           }

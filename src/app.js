@@ -77,16 +77,26 @@ const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000')
   .split(',')
   .map((origin) => origin.trim());
 
+logger.info(`CORS: Allowed origins: ${allowedOrigins.join(', ')}`);
+
 app.use(
   cors({
     origin: (origin, callback) => {
       // Allow requests with no origin (like mobile apps or curl)
-      if (!origin) return callback(null, true);
+      if (!origin) {
+        logger.debug('CORS: Request with no origin, allowing');
+        return callback(null, true);
+      }
+
+      // Log all CORS requests for debugging
+      logger.debug(`CORS: Request from origin: ${origin}`);
 
       if (allowedOrigins.includes(origin) || allowedOrigins.includes('*')) {
+        logger.debug(`CORS: Origin ${origin} allowed`);
         callback(null, true);
       } else {
-        callback(new Error('Not allowed by CORS'));
+        logger.warn(`CORS: Origin ${origin} not allowed. Allowed origins: ${allowedOrigins.join(', ')}`);
+        callback(new Error(`Not allowed by CORS. Origin: ${origin}`));
       }
     },
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
